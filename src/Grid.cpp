@@ -1,6 +1,7 @@
 #include "Grid.h"
 #include <algorithm>
 #include <iostream>
+#include <omp.h>
 #if __cplusplus >= 201703L && __has_include(<filesystem>)
   #include <filesystem>
   namespace fs = std::filesystem;
@@ -109,8 +110,7 @@ bool Grid::writeFile(const std::string& name, bool halo)
     return false;
 }
 
-void Grid::print(bool halo)
-{
+void Grid::print(bool halo) {
     int shift = halo?0:HALO;
 
     for(int i=shift; i<numGrids_y(true)-shift; ++i ) {
@@ -122,30 +122,26 @@ void Grid::print(bool halo)
 }
 
 
-int Grid::numGrids_x(bool halo) const
-{
+int Grid::numGrids_x(bool halo) const {
     int halo_x = halo ? 0:2*HALO;
     return (columns - halo_x);
 }
 
 
 
-int Grid::numGrids_y(bool halo) const
-{
+int Grid::numGrids_y(bool halo) const {
     int halo_y = halo ? 0:2*HALO;
     return (rows - halo_y);
 }
 
 //return total size of the array
-int Grid::numGrids(bool halo) const
-{
+int Grid::numGrids(bool halo) const {
     return numGrids_y(halo)*numGrids_x(halo);
 }
 
 // initialize the array with a function take 2 arguments(x,y), and evaluates the function on each of the grid point to fill in the array -2D
 //used mainly for dirichlet type boundary
-void Grid::fillBoundary(std::function<double(int,int)> func, Direction dir)
-{
+void Grid::fillBoundary(std::function<double(int,int)> func, Direction dir) {
     if(dir == WEST)
         for(int j=0; j<numGrids_y(true);++j)
         {
@@ -171,8 +167,7 @@ void Grid::fillBoundary(std::function<double(int,int)> func, Direction dir)
         }
 }
 
-void Grid::fill(double val, bool halo)
-{
+void Grid::fill(double val, bool halo) {
     int shift = halo?0:HALO;
 
     for(int j=shift; j<numGrids_y(true)-shift; ++j) {
@@ -182,8 +177,7 @@ void Grid::fill(double val, bool halo)
     }
 }
 
-void Grid::rand(bool halo, unsigned int seed)
-{
+void Grid::rand(bool halo, unsigned int seed) {
     int shift = halo?0:HALO;
 
     for(int j=shift; j<numGrids_y(true)-shift; ++j) {
@@ -194,8 +188,7 @@ void Grid::rand(bool halo, unsigned int seed)
 }
 
 
-void Grid::fill(std::function<double(int,int)> func, bool halo)
-{
+void Grid::fill(std::function<double(int,int)> func, bool halo) {
     int shift = halo?0:HALO;
 
     for(int j=shift; j<numGrids_y(true)-shift; ++j) {
@@ -207,8 +200,7 @@ void Grid::fill(std::function<double(int,int)> func, bool halo)
 
 //copies inner values to halo with a shift which depends on the function passed in
 //used mainly for neumann type boundary
-void Grid::copyToHalo(std::function<double(int,int)> shift_func, Direction dir)
-{
+void Grid::copyToHalo(std::function<double(int,int)> shift_func, Direction dir) {
     if(dir == WEST)
         for(int j=0; j<numGrids_y(true);++j)
         {
@@ -234,76 +226,75 @@ void Grid::copyToHalo(std::function<double(int,int)> shift_func, Direction dir)
         }
 }
 
-void Grid::swap(Grid &other)
-{
+void Grid::swap(Grid &other) {
     assert(rows==other.rows && columns==other.columns);
     double *temp = (*this).arrayPtr;
     (*this).arrayPtr = other.arrayPtr;
     other.arrayPtr = temp;
 }
 
-Grid::~Grid()
-{
+Grid::~Grid() {
     delete [] arrayPtr;
     arrayPtr = NULL;
 }
 
 //Calculates lhs[:] = a*x[:] + b*y[:]
-void axpby(Grid *lhs, double a, Grid *x, double b, Grid *y, bool halo)
-{
+void axpby(Grid *lhs, double a, Grid *x, double b, Grid *y, bool halo) {
+    int check = 0;
+    #pragma omp parallel 
+    {
+        #pragma omp single
+        {
+            check = omp_get_num_threads();
+        }
+    }
     START_TIMER(AXPBY);
-#ifdef DEBUG
+    #ifdef DEBUG
     assert((lhs->numGrids_y(true)==x->numGrids_y(true)) && (lhs->numGrids_x(true)==x->numGrids_x(true)));
     assert((y->numGrids_y(true)==x->numGrids_y(true)) && (y->numGrids_x(true)==x->numGrids_x(true)));
-#endif
+    #endif
 
     int shift = halo?0:HALO;
 
-#ifdef LIKWID_PERFMON
+    #ifdef LIKWID_PERFMON
     LIKWID_MARKER_START("AXPBY");
-#endif
-
-    for(int yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex)
-    {
-        for(int xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex)
-        {
+    #endif
+    #pragma omp parallel for collapse(2) schedule(static) 
+    for(int yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex) {
+        for(int xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex) {
             (*lhs)(yIndex,xIndex) = (a*(*x)(yIndex,xIndex)) + (b*(*y)(yIndex,xIndex));
         }
     }
-#ifdef LIKWID_PERFMON
+    #ifdef LIKWID_PERFMON
     LIKWID_MARKER_STOP("AXPBY");
-#endif
+    #endif
 
     STOP_TIMER(AXPBY);
 }
 
 
 //Calculates lhs[:] = a*rhs[:]
-void copy(Grid *lhs, double a, Grid *rhs, bool halo)
-{
+void copy(Grid *lhs, double a, Grid *rhs, bool halo) {
     START_TIMER(COPY);
-#ifdef DEBUG
+    #ifdef DEBUG
     assert((lhs->numGrids_y(true)==rhs->numGrids_y(true)) && (lhs->numGrids_x(true)==rhs->numGrids_x(true)));
-#endif
+    #endif
 
     int shift = halo?0:HALO;
 
-#ifdef LIKWID_PERFMON
+    #ifdef LIKWID_PERFMON
     LIKWID_MARKER_START("COPY");
-#endif
+    #endif
 
-    for(int yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex)
-    {
-        for(int xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex)
-        {
+    for(int yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex) {
+        for(int xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex) {
             (*lhs)(yIndex,xIndex) = a*(*rhs)(yIndex,xIndex);
         }
     }
 
-#ifdef LIKWID_PERFMON
+    #ifdef LIKWID_PERFMON
     LIKWID_MARKER_STOP("COPY");
-#endif
-
+    #endif
 
     STOP_TIMER(COPY);
 }
@@ -311,31 +302,37 @@ void copy(Grid *lhs, double a, Grid *rhs, bool halo)
 
 //Calculate dot product of x and y
 //i.e. ; res = x'*y
-double dotProduct(Grid *x, Grid *y, bool halo)
-{
+double dotProduct(Grid *x, Grid *y, bool halo) {
+    int check = 0;
+    #pragma omp parallel 
+    {
+        #pragma omp single
+        {
+            int check = omp_get_num_threads();
+        }
+    }
     START_TIMER(DOT_PRODUCT);
-#ifdef DEBUG
+    #ifdef DEBUG
     assert((y->numGrids_y(true)==x->numGrids_y(true)) && (y->numGrids_x(true)==x->numGrids_x(true)));
-#endif
+    #endif
 
     int shift = halo?0:HALO;
 
-#ifdef LIKWID_PERFMON
+    #ifdef LIKWID_PERFMON
     LIKWID_MARKER_START("DOT_PRODUCT");
-#endif
+    #endif
 
-    double dot_res = 0;
-    for(int yIndex=shift; yIndex<x->numGrids_y(true)-shift; ++yIndex)
-    {
-        for(int xIndex=shift; xIndex<x->numGrids_x(true)-shift; ++xIndex)
-        {
+    double dot_res = 0; // Reduction
+    #pragma omp parallel for collapse(2) reduction(+:dot_res) schedule(static)
+    for(int yIndex=shift; yIndex<x->numGrids_y(true)-shift; ++yIndex) {
+        for(int xIndex=shift; xIndex<x->numGrids_x(true)-shift; ++xIndex) {
             dot_res += (*x)(yIndex,xIndex)*(*y)(yIndex,xIndex);
         }
     }
 
-#ifdef LIKWID_PERFMON
+    #ifdef LIKWID_PERFMON
     LIKWID_MARKER_STOP("DOT_PRODUCT");
-#endif
+    #endif
 
 
     STOP_TIMER(DOT_PRODUCT);
@@ -343,24 +340,19 @@ double dotProduct(Grid *x, Grid *y, bool halo)
 }
 
 
-bool isSymmetric(Grid *u, double tol, bool halo)
-{
+bool isSymmetric(Grid *u, double tol, bool halo) {
     bool flag = true;
     const int xSize = u->numGrids_x(true);
     const int ySize = u->numGrids_y(true);
 
     int shift = halo?0:HALO;
 
-    for ( int j=shift; j!=ySize-shift; j+=1)
-    {
-        for ( int i=shift; i!=xSize-shift; i+=1)
-        {
-            if( ((*u)(i,j) - (*u)(j,i)) > tol )
-            {
+    for ( int j=shift; j!=ySize-shift; j+=1) {
+        for ( int i=shift; i!=xSize-shift; i+=1) {
+            if( ((*u)(i,j) - (*u)(j,i)) > tol ) {
                 flag = false;
                 break;
             }
-
         }
     }
     return flag;
@@ -369,8 +361,7 @@ bool isSymmetric(Grid *u, double tol, bool halo)
 // ////////////////////////////////////////////////////  Non Class Member Functions   /////////////////////////////////////////////////////////////
 // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool writeGnuplotFile(const std::string& name, Grid &src, double len_x, double len_y, bool halo)
-{
+bool writeGnuplotFile(const std::string& name, Grid &src, double len_x, double len_y, bool halo) {
     std::cout << "Writing solution file..." << std::endl;
     // Check if folder exists
     fs::path file_path = name;

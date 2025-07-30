@@ -8,13 +8,11 @@
     #include <likwid.h>
 #endif
 
-double uSineFunc(int i, int j, double h_x, double h_y)
-{
+double uSineFunc(int i, int j, double h_x, double h_y) {
     return sin(M_PI*i*h_x)*sin(M_PI*j*h_y);
 }
 
-double rhsSineFunc(int i, int j, double h_x, double h_y)
-{
+double rhsSineFunc(int i, int j, double h_x, double h_y) {
     return 2*M_PI*M_PI*sin(M_PI*i*h_x)*sin(M_PI*j*h_y);
 }
 
@@ -25,26 +23,23 @@ double rhsSineFunc(int i, int j, double h_x, double h_y)
     res_norm_sq_ = dotProduct(&res_vec_, &res_vec_);
 
 
-
-int main(const int argc, char* const argv[])
-{
-    if(argc < 3)
-    {
+int main(const int argc, char* const argv[]) {
+    if(argc < 3) {
         printf("Usage: %s <outer dimension y> <inner dimension x>\n", argv[0]);
         return 0;
     }
 
-#ifdef LIKWID_PERFMON
+    #ifdef LIKWID_PERFMON
     LIKWID_MARKER_INIT;
-#endif
+    #endif
 
     int ny = atoi(argv[1]);
     int nx = atoi(argv[2]);
     int numThreads = 1;
 
-#pragma omp parallel
+    #pragma omp parallel
     {
-#pragma omp single
+        #pragma omp single
         {
             numThreads = omp_get_num_threads();
         }
@@ -82,10 +77,10 @@ int main(const int argc, char* const argv[])
     RESIDUAL(res_sine_cg, residual, rhs_sine, x);
     CHECK_LESS_THAN(res_sine_cg, res_start, "Solver::CG - residual check");
     CHECK_LESS_THAN(err_sine_cg, err_start, "Solver::CG - error check");
-#ifdef DEBUG
+    #ifdef DEBUG
     printf("Initial residual = %.9e, curr residual CG = %.9e\n", sqrt(res_start), sqrt(res_sine_cg));
     printf("Initial error = %.9e, curr error CG = %.9e\n", sqrt(err_start), sqrt(err_sine_cg));
-#endif
+    #endif
 
     //Now check PCG solver with fixed iteration number
     x.rand();//fill(0);//rand();
@@ -100,18 +95,16 @@ int main(const int argc, char* const argv[])
     RESIDUAL(res_sine_pcg, residual, rhs_sine, x);
     CHECK_LESS_THAN(res_sine_pcg, res_start, "Solver::PCG - residual check");
     CHECK_LESS_THAN(err_sine_pcg, err_start, "Solver::PCG - error check");
-#ifdef DEBUG
+    #ifdef DEBUG
     printf("Initial residual = %.9e, curr residual PCG = %.9e\n", sqrt(res_start), sqrt(res_sine_pcg));
     printf("Initial error = %.9e, curr error PCG = %.9e\n", sqrt(err_start), sqrt(err_sine_pcg));
-#endif
+    #endif
 
     TESTS_END;
 
     PRINT_TIME_SUMMARY;
 
-#ifdef LIKWID_PERFMON
+    #ifdef LIKWID_PERFMON
     LIKWID_MARKER_CLOSE;
-#endif
-
-
+    #endif
 }

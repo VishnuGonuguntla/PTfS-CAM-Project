@@ -4,18 +4,15 @@
 #include "test_macros.h"
 #include <cmath>
 
-double uSineFunc(int i, int j, double h_x, double h_y)
-{
+double uSineFunc(int i, int j, double h_x, double h_y) {
     return sin(M_PI*i*h_x)*sin(M_PI*j*h_y);
 }
 
-double rhsSineFunc(int i, int j, double h_x, double h_y)
-{
+double rhsSineFunc(int i, int j, double h_x, double h_y) {
     return 2*M_PI*M_PI*sin(M_PI*i*h_x)*sin(M_PI*j*h_y);
 }
 
-double rhsLinearFunc(int i, int j, double h_x, double h_y)
-{
+double rhsLinearFunc(int i, int j, double h_x, double h_y) {
     return 2*i*h_x + 2*j*h_y;
 }
 
@@ -27,8 +24,7 @@ double rhsLinearFunc(int i, int j, double h_x, double h_y)
 //for test we set u = sin(πx)*sin(πy); for x,y ∈ [0,1]
 //            =>-Δu = 2π²*sin(πx)*sin(πy) = 2π²*u
 //To test Solver we solve the inverse problem
-int main()
-{
+int main() {
     TESTS_START(13);
 
     int nx = 199, ny = 99; //nx and ny contains only inner points

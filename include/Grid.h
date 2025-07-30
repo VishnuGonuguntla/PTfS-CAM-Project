@@ -17,7 +17,7 @@
     #define HALO 1
 #endif
 
-struct Grid{
+struct Grid {
     int columns, rows;
     double* arrayPtr;
     BC_TYPE ghost[4];
@@ -97,12 +97,11 @@ struct Grid{
      *
      */
     ~Grid();
-
 };
 
 
 
-inline double& Grid::operator ()(int i, int j ){
+inline double& Grid::operator ()(int i, int j ) {
 #ifdef DEBUG
     assert( i >= (0) && j >= (0) );
     assert( i< (rows) && j < (columns) );
