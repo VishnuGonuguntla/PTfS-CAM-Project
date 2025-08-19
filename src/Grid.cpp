@@ -240,14 +240,6 @@ Grid::~Grid() {
 
 //Calculates lhs[:] = a*x[:] + b*y[:]
 void axpby(Grid *lhs, double a, Grid *x, double b, Grid *y, bool halo) {
-    int check = 0;
-    #pragma omp parallel 
-    {
-        #pragma omp single
-        {
-            check = omp_get_num_threads();
-        }
-    }
     START_TIMER(AXPBY);
     #ifdef DEBUG
     assert((lhs->numGrids_y(true)==x->numGrids_y(true)) && (lhs->numGrids_x(true)==x->numGrids_x(true)));
@@ -255,13 +247,14 @@ void axpby(Grid *lhs, double a, Grid *x, double b, Grid *y, bool halo) {
     #endif
 
     int shift = halo?0:HALO;
-
+    int yIndex, xIndex;
     #ifdef LIKWID_PERFMON
     LIKWID_MARKER_START("AXPBY");
     #endif
-    #pragma omp parallel for collapse(2) schedule(static) 
-    for(int yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex) {
-        for(int xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex) {
+    #pragma omp parallel for schedule(static, 1) 
+    for(yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex) {
+        #pragma omp simd simdlen(8) aligned(lhs,x,y:64)
+        for(xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex) {
             (*lhs)(yIndex,xIndex) = (a*(*x)(yIndex,xIndex)) + (b*(*y)(yIndex,xIndex));
         }
     }
@@ -274,43 +267,43 @@ void axpby(Grid *lhs, double a, Grid *x, double b, Grid *y, bool halo) {
 
 
 //Calculates lhs[:] = a*rhs[:]
-void copy(Grid *lhs, double a, Grid *rhs, bool halo) {
-    START_TIMER(COPY);
-    #ifdef DEBUG
-    assert((lhs->numGrids_y(true)==rhs->numGrids_y(true)) && (lhs->numGrids_x(true)==rhs->numGrids_x(true)));
-    #endif
+// void copy(Grid *lhs, double a, Grid *rhs, bool halo) {
+//     START_TIMER(COPY);
+//     #ifdef DEBUG
+//     assert((lhs->numGrids_y(true)==rhs->numGrids_y(true)) && (lhs->numGrids_x(true)==rhs->numGrids_x(true)));
+//     #endif
 
-    int shift = halo?0:HALO;
+//     int shift = halo?0:HALO;
 
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_START("COPY");
-    #endif
+//     #ifdef LIKWID_PERFMON
+//     LIKWID_MARKER_START("COPY");
+//     #endif
+//     // #pragma omp collapse(2) schedule(dynamic,4000) 
+//     for(int yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex) {
+//         for(int xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex) {
+//             (*lhs)(yIndex,xIndex) = a*(*rhs)(yIndex,xIndex);
+//         }
+//     }
 
-    for(int yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex) {
-        for(int xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex) {
-            (*lhs)(yIndex,xIndex) = a*(*rhs)(yIndex,xIndex);
-        }
-    }
+//     #ifdef LIKWID_PERFMON
+//     LIKWID_MARKER_STOP("COPY");
+//     #endif
 
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_STOP("COPY");
-    #endif
-
-    STOP_TIMER(COPY);
-}
+//     STOP_TIMER(COPY);
+// }
 
 
 //Calculate dot product of x and y
 //i.e. ; res = x'*y
 double dotProduct(Grid *x, Grid *y, bool halo) {
-    int check = 0;
-    #pragma omp parallel 
-    {
-        #pragma omp single
-        {
-            int check = omp_get_num_threads();
-        }
-    }
+    // int check = 0;
+    // #pragma omp parallel 
+    // {
+    //     #pragma omp single
+    //     {
+    //         int check = omp_get_num_threads();
+    //     }
+    // }
     START_TIMER(DOT_PRODUCT);
     #ifdef DEBUG
     assert((y->numGrids_y(true)==x->numGrids_y(true)) && (y->numGrids_x(true)==x->numGrids_x(true)));
@@ -321,11 +314,12 @@ double dotProduct(Grid *x, Grid *y, bool halo) {
     #ifdef LIKWID_PERFMON
     LIKWID_MARKER_START("DOT_PRODUCT");
     #endif
-
+    int xIndex, yIndex;
     double dot_res = 0; // Reduction
-    #pragma omp parallel for collapse(2) reduction(+:dot_res) schedule(static)
-    for(int yIndex=shift; yIndex<x->numGrids_y(true)-shift; ++yIndex) {
-        for(int xIndex=shift; xIndex<x->numGrids_x(true)-shift; ++xIndex) {
+    #pragma omp parallel for default(none) shared(x,y,shift) private(xIndex,yIndex) reduction(+:dot_res) schedule(dynamic, 1)
+    for(yIndex=shift; yIndex<x->numGrids_y(true)-shift; ++yIndex) {
+        #pragma omp simd simdlen(8) aligned(x,y:64)
+        for(xIndex=shift; xIndex<x->numGrids_x(true)-shift; ++xIndex) {
             dot_res += (*x)(yIndex,xIndex)*(*y)(yIndex,xIndex);
         }
     }
