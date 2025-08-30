@@ -248,10 +248,19 @@ void axpby(Grid *lhs, double a, Grid *x, double b, Grid *y, bool halo) {
 
     int shift = halo?0:HALO;
     int yIndex, xIndex;
+    int numThreads = 1;
+    double N = 1e3;
+    int* arary = (int*)malloc(N*sizeof(int));
+    #pragma omp parallel // lastPrivate(numThreads)
+    {
+        numThreads = omp_get_num_threads();
+        #pragma omp parallel for schedule (static)
+        for (int i = 0; i < N; i++) arary[i] = i;
+    }
     #ifdef LIKWID_PERFMON
     LIKWID_MARKER_START("AXPBY");
     #endif
-    #pragma omp parallel for schedule(static, 1) 
+    #pragma omp parallel for schedule(static, 1)
     for(yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex) {
         #pragma omp simd simdlen(8) aligned(lhs,x,y:64)
         for(xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex) {
@@ -310,13 +319,21 @@ double dotProduct(Grid *x, Grid *y, bool halo) {
     #endif
 
     int shift = halo?0:HALO;
-
+    int numThreads = 1;
+    double N = 1e3;
+    int* arary = (int*)malloc(N*sizeof(int));
+    #pragma omp parallel // lastPrivate(numThreads)
+    {
+        numThreads = omp_get_num_threads();
+        #pragma omp parallel for schedule (static)
+        for (int i = 0; i < N; i++) arary[i] = i;
+    }
     #ifdef LIKWID_PERFMON
     LIKWID_MARKER_START("DOT_PRODUCT");
     #endif
     int xIndex, yIndex;
     double dot_res = 0; // Reduction
-    #pragma omp parallel for default(none) shared(x,y,shift) private(xIndex,yIndex) reduction(+:dot_res) schedule(dynamic, 1)
+    #pragma omp parallel for default(none) shared(x,y,shift) private(xIndex,yIndex) reduction(+:dot_res) schedule(static, 1)
     for(yIndex=shift; yIndex<x->numGrids_y(true)-shift; ++yIndex) {
         #pragma omp simd simdlen(8) aligned(x,y:64)
         for(xIndex=shift; xIndex<x->numGrids_x(true)-shift; ++xIndex) {

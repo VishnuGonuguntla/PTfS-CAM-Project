@@ -3,6 +3,9 @@
 #include "Solver.h"
 #include "test_macros.h"
 #include <omp.h>
+#include <fstream>
+#include <string>
+
 
 #ifdef LIKWID_PERFMON
     #include <likwid.h>
@@ -36,19 +39,19 @@ int main(const int argc, char* const argv[]) {
     int ny = atoi(argv[1]);
     int nx = atoi(argv[2]);
     int numThreads = 1;
-
-    #pragma omp parallel
+    // double N = 1e10;
+    // int* arary = (int*)malloc(N*sizeof(int));
+    #pragma omp parallel // lastPrivate(numThreads)
     {
-        #pragma omp single
-        {
-            numThreads = omp_get_num_threads();
-        }
+        numThreads = omp_get_num_threads();
+        // #pragma omp parallel for schedule (static)
+        // for (int i = 0; i < N; i++) arary[i] = i;
     }
 
     printf("Total number of threads active = %d\n", numThreads);
 
     TESTS_START(4);
-
+    
     PDE laplace(1,1,nx,ny);
     Grid u_sine(nx,ny);
     Grid rhs_sine(nx,ny);
@@ -70,7 +73,8 @@ int main(const int argc, char* const argv[]) {
     double cg_time = 0;
     GET_TIMER(cg_time, CG);
     double totLUP = nx*ny;
-    printf("Performance CG = %f [MLUP/s]\n", static_cast<double>(iter_sine_cg*totLUP*1e-6)/cg_time);
+    double perf_CG = static_cast<double>(iter_sine_cg*totLUP*1e-6)/cg_time;
+    printf("Performance CG = %f [MLUP/s]\n", perf_CG);
     axpby(&residual, 1.0, &u_sine, -1.0, &x);
     double err_sine_cg = dotProduct(&residual, &residual);
     double res_sine_cg;
@@ -78,8 +82,8 @@ int main(const int argc, char* const argv[]) {
     CHECK_LESS_THAN(res_sine_cg, res_start, "Solver::CG - residual check");
     CHECK_LESS_THAN(err_sine_cg, err_start, "Solver::CG - error check");
     #ifdef DEBUG
-    printf("Initial residual = %.9e, curr residual CG = %.9e\n", sqrt(res_start), sqrt(res_sine_cg));
-    printf("Initial error = %.9e, curr error CG = %.9e\n", sqrt(err_start), sqrt(err_sine_cg));
+        printf("Initial residual = %.9e, curr residual CG = %.9e\n", sqrt(res_start), sqrt(res_sine_cg));
+        printf("Initial error = %.9e, curr error CG = %.9e\n", sqrt(err_start), sqrt(err_sine_cg));
     #endif
 
     //Now check PCG solver with fixed iteration number
@@ -88,16 +92,22 @@ int main(const int argc, char* const argv[]) {
     printf("PCG iterations = %d\n", iter_sine_pcg);
     double pcg_time = 0;
     GET_TIMER(pcg_time, PCG);
-    printf("Performance PCG = %f [MLUP/s]\n", static_cast<double>(iter_sine_pcg*totLUP*1e-6)/pcg_time);
+    double perf_PCG = static_cast<double>(iter_sine_pcg*totLUP*1e-6)/pcg_time;
+    printf("Performance PCG = %f [MLUP/s]\n", perf_PCG);
+    std::string outname = std::string("results/data_") + argv[1] + "_" + argv[2] + ".txt";
+    std::fstream data_file(outname, std::ios::app);
+    data_file << numThreads << " " << perf_CG << " " << perf_PCG << "\n";
+    data_file.close();
     axpby(&residual, 1.0, &u_sine, -1.0, &x);
     double err_sine_pcg = dotProduct(&residual, &residual);
     double res_sine_pcg;
     RESIDUAL(res_sine_pcg, residual, rhs_sine, x);
     CHECK_LESS_THAN(res_sine_pcg, res_start, "Solver::PCG - residual check");
     CHECK_LESS_THAN(err_sine_pcg, err_start, "Solver::PCG - error check");
+
     #ifdef DEBUG
-    printf("Initial residual = %.9e, curr residual PCG = %.9e\n", sqrt(res_start), sqrt(res_sine_pcg));
-    printf("Initial error = %.9e, curr error PCG = %.9e\n", sqrt(err_start), sqrt(err_sine_pcg));
+        printf("Initial residual = %.9e, curr residual PCG = %.9e\n", sqrt(res_start), sqrt(res_sine_pcg));
+        printf("Initial error = %.9e, curr error PCG = %.9e\n", sqrt(err_start), sqrt(err_sine_pcg));
     #endif
 
     TESTS_END;

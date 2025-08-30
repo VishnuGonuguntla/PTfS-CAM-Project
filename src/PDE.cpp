@@ -121,6 +121,15 @@ void PDE::applyStencil(Grid* lhs, Grid* x) {
     #ifdef LIKWID_PERFMON
     LIKWID_MARKER_START("APPLY_STENCIL");
     #endif
+    int numThreads = 1;
+    double N = 1e3;
+    int* arary = (int*)malloc(N*sizeof(int));
+    #pragma omp parallel // lastPrivate(numThreads)
+    {
+        numThreads = omp_get_num_threads();
+        #pragma omp parallel for schedule (static)
+        for (int i = 0; i < N; i++) arary[i] = i;
+    }
     int i, j, nth, tid, istart, iend, jj;
     #pragma omp parallel // private(i, j, istart, iend, jj) 
     {
@@ -128,7 +137,7 @@ void PDE::applyStencil(Grid* lhs, Grid* x) {
         tid = omp_get_thread_num();
         istart = (xSize-2)/nth * tid + 1; 
         iend   = (tid == nth - 1 ? xSize - 2 : istart + (xSize-2)/nth - 1); 
-        #pragma omp parallel for firstprivate(nth, tid, istart, iend) schedule(dynamic, 4)
+        #pragma omp parallel for firstprivate(nth, tid, istart, iend) schedule(static, 4)
         for ( j=1; j<ySize -1 + nth -1; ++j ) {
             jj = j - tid;
             if (jj >= 1 && jj < ySize-1) {
@@ -166,7 +175,15 @@ void PDE::GSPreCon(Grid* rhs, Grid *x)
     //     }
     // }
     START_TIMER(GS_PRE_CON);
-
+    int numThreads = 1;
+    double N = 1e3;
+    int* arary = (int*)malloc(N*sizeof(int));
+    #pragma omp parallel // lastPrivate(numThreads)
+    {
+        numThreads = omp_get_num_threads();
+        #pragma omp parallel for schedule (static)
+        for (int i = 0; i < N; i++) arary[i] = i;
+    }
     #ifdef DEBUG
     assert((rhs->numGrids_y(true)==grids_y) && (rhs->numGrids_x(true)==grids_x));
     assert((x->numGrids_y(true)==grids_y) && (x->numGrids_x(true)==grids_x));
