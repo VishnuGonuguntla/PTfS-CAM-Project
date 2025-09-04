@@ -5,7 +5,7 @@
 #include <omp.h>
 #include <fstream>
 #include <string>
-
+#include <chrono>
 
 #ifdef LIKWID_PERFMON
     #include <likwid.h>
@@ -27,6 +27,7 @@ double rhsSineFunc(int i, int j, double h_x, double h_y) {
 
 
 int main(const int argc, char* const argv[]) {
+    START_TIMER(MAIN)
     if(argc < 3) {
         printf("Usage: %s <outer dimension y> <inner dimension x>\n", argv[0]);
         return 0;
@@ -39,15 +40,10 @@ int main(const int argc, char* const argv[]) {
     int ny = atoi(argv[1]);
     int nx = atoi(argv[2]);
     int numThreads = 1;
-    // double N = 1e10;
-    // int* arary = (int*)malloc(N*sizeof(int));
-    #pragma omp parallel // lastPrivate(numThreads)
+    #pragma omp parallel 
     {
         numThreads = omp_get_num_threads();
-        // #pragma omp parallel for schedule (static)
-        // for (int i = 0; i < N; i++) arary[i] = i;
     }
-
     printf("Total number of threads active = %d\n", numThreads);
 
     TESTS_START(4);
@@ -59,10 +55,11 @@ int main(const int argc, char* const argv[]) {
     laplace.init(&u_sine);
     laplace.initFunc = rhsSineFunc;
     laplace.init(&rhs_sine);
-    Grid residual(nx,ny);
+    Grid residual(nx, ny);
 
     //Now check CG solver with fixed iteration number
     Grid x(nx,ny);
+    
     x.rand();//fill(0);//rand();
     axpby(&residual, 1.0, &u_sine, -1.0, &x);
     double err_start = dotProduct(&residual, &residual);
@@ -111,7 +108,10 @@ int main(const int argc, char* const argv[]) {
     #endif
 
     TESTS_END;
-
+    STOP_TIMER(MAIN)
+    double totalTime = 0;
+    GET_TIMER(totalTime, MAIN);
+    printf("Total Time = %f sec \n", totalTime);
     PRINT_TIME_SUMMARY;
 
     #ifdef LIKWID_PERFMON

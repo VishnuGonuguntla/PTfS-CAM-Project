@@ -10,8 +10,8 @@ SolverClass::SolverClass(PDE *pde_, Grid *x_, Grid *b_):pde(pde_),x(x_),b(b_) {
 
 int SolverClass::CG(int niter, double tol) {
     Grid *p = new Grid(pde->numGrids_x(), pde->numGrids_y());
-    Grid *v = new Grid(pde->numGrids_x(), pde->numGrids_y());
-
+    Grid *v = new Grid(pde->numGrids_x(), pde->numGrids_y()); 
+    
     int iter = 0;
     double lambda = 0;
     double alpha_0 = 0, alpha_1 = 0;
@@ -74,7 +74,7 @@ int SolverClass::PCG(int niter, double tol) {
 
     alpha_0 = dotProduct(r,z);
     Grid* p = new Grid(*z);
-
+    
     START_TIMER(PCG);
 
     while( (iter<niter) && (res_norm_sq>tol*tol) && (IS_VALID(res_norm_sq)) ) {

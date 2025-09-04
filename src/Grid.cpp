@@ -19,28 +19,40 @@
 Grid::Grid(int columns_,int rows_):columns(columns_+2*HALO),rows(rows_+2*HALO)
 {
 
-    for(int i=0; i<4; ++i){
+    for(int i = 0; i < 4; ++i){
         ghost[i] = Dirichlet;
     }
 
     //always pad with halo; to support Dirichlet
     arrayPtr = new double[ rows*columns];
-    for (int i =0; i<rows*columns;i++)
+    #pragma omp parallel 
     {
-        arrayPtr[i] = 0.0;
+        #pragma omp for schedule(static)
+        {
+            for (int i = 0; i<rows*columns; i++)
+            {
+                arrayPtr[i] = 0.0;
+            }
+        }
     }
 }
 
 Grid::Grid(int columns_,int rows_, BC_TYPE *ghost_):columns(columns_+2*HALO),rows(rows_+2*HALO)
 {
-    for(int i=0; i<4; ++i){
+    for(int i = 0; i < 4; ++i){
         ghost[i] = ghost_[i];
     }
 
     arrayPtr = new double[rows*columns];
-    for (int i =0; i<rows*columns;i++)
+    #pragma omp parallel 
     {
-        arrayPtr[i] = 0.0;
+        #pragma omp for schedule(static)
+        {
+            for (int i = 0; i<rows*columns; i++)
+            {
+                arrayPtr[i] = 0.0;
+            }
+        }
     }
 }
 
@@ -101,7 +113,7 @@ bool Grid::writeFile(const std::string& name, bool halo)
 
         for (int i = shift; i<numGrids_y(true)-shift ; ++i ){
             for ( int j = shift ; j<numGrids_x(true)-shift; ++j ){
-                file<<(*this)(i,j)<<"\t";
+                file << (*this)(i,j) << "\t";
             }
             file << "\n";
         }
@@ -111,7 +123,7 @@ bool Grid::writeFile(const std::string& name, bool halo)
 }
 
 void Grid::print(bool halo) {
-    int shift = halo?0:HALO;
+    int shift = halo ? 0 : HALO;
 
     for(int i=shift; i<numGrids_y(true)-shift; ++i ) {
         for(int j=shift; j<numGrids_x(true)-shift ; ++j){
@@ -143,6 +155,7 @@ int Grid::numGrids(bool halo) const {
 //used mainly for dirichlet type boundary
 void Grid::fillBoundary(std::function<double(int,int)> func, Direction dir) {
     if(dir == WEST)
+        #pragma omp parallel for 
         for(int j=0; j<numGrids_y(true);++j)
         {
             (*this)(j,0) = func(0,j);
@@ -249,20 +262,16 @@ void axpby(Grid *lhs, double a, Grid *x, double b, Grid *y, bool halo) {
     int shift = halo?0:HALO;
     int yIndex, xIndex;
     int numThreads = 1;
-    double N = 1e3;
-    int* arary = (int*)malloc(N*sizeof(int));
     #pragma omp parallel // lastPrivate(numThreads)
     {
         numThreads = omp_get_num_threads();
-        #pragma omp parallel for schedule (static)
-        for (int i = 0; i < N; i++) arary[i] = i;
     }
     #ifdef LIKWID_PERFMON
     LIKWID_MARKER_START("AXPBY");
     #endif
-    #pragma omp parallel for schedule(static, 1)
+    #pragma omp parallel for schedule(static)
     for(yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex) {
-        #pragma omp simd simdlen(8) aligned(lhs,x,y:64)
+        #pragma omp simd // simdlen(8) aligned(lhs,x,y:64)
         for(xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex) {
             (*lhs)(yIndex,xIndex) = (a*(*x)(yIndex,xIndex)) + (b*(*y)(yIndex,xIndex));
         }
@@ -320,22 +329,18 @@ double dotProduct(Grid *x, Grid *y, bool halo) {
 
     int shift = halo?0:HALO;
     int numThreads = 1;
-    double N = 1e3;
-    int* arary = (int*)malloc(N*sizeof(int));
     #pragma omp parallel // lastPrivate(numThreads)
     {
         numThreads = omp_get_num_threads();
-        #pragma omp parallel for schedule (static)
-        for (int i = 0; i < N; i++) arary[i] = i;
     }
     #ifdef LIKWID_PERFMON
     LIKWID_MARKER_START("DOT_PRODUCT");
     #endif
     int xIndex, yIndex;
-    double dot_res = 0; // Reduction
-    #pragma omp parallel for default(none) shared(x,y,shift) private(xIndex,yIndex) reduction(+:dot_res) schedule(static, 1)
+    double dot_res = 0;
+    #pragma omp parallel for reduction( + : dot_res) schedule(static) // default(none) shared(x,y,shift) private(xIndex,yIndex)
     for(yIndex=shift; yIndex<x->numGrids_y(true)-shift; ++yIndex) {
-        #pragma omp simd simdlen(8) aligned(x,y:64)
+        #pragma omp simd // simdlen(8) aligned(x,y:64)
         for(xIndex=shift; xIndex<x->numGrids_x(true)-shift; ++xIndex) {
             dot_res += (*x)(yIndex,xIndex)*(*y)(yIndex,xIndex);
         }
