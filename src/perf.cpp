@@ -19,7 +19,6 @@ double rhsSineFunc(int i, int j, double h_x, double h_y) {
     return 2*M_PI*M_PI*sin(M_PI*i*h_x)*sin(M_PI*j*h_y);
 }
 
-
 #define RESIDUAL(res_norm_sq_, res_vec_, b_, x_)\
     laplace.applyStencil(&res_vec_,&x_);\
     axpby(&res_vec_,1.0,&b_,-1.0,&res_vec_);\
@@ -67,7 +66,7 @@ int main(const int argc, char* const argv[]) {
     RESIDUAL(res_start, residual, rhs_sine, x);
     int iter_sine_cg = laplace.solve(&x, &rhs_sine, CG, 20);
     printf("CG iterations = %d\n", iter_sine_cg);
-    double cg_time = 0;
+    double cg_time = 0; 
     GET_TIMER(cg_time, CG);
     double totLUP = nx*ny;
     double perf_CG = static_cast<double>(iter_sine_cg*totLUP*1e-6)/cg_time;
