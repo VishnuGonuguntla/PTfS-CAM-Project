@@ -36,3 +36,7 @@ test
 # Image files
 *.dat
 *.png
+results/data*.txt
+results/*.png
+results/*.dat
+initialize.sh

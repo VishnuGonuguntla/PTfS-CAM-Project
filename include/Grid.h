@@ -45,8 +45,8 @@ struct Grid {
      * @param row number
      * @param column number
      */
-    inline double& operator()(int,int);
-    inline double& operator()(int,int) const;
+    inline double& operator() (int,int);
+    inline double& operator() (int,int) const;
 
     //print the Grid
     void print(bool halo=false);
@@ -122,6 +122,8 @@ bool writeGnuplotFile(const std::string& name, Grid &src, double lx, double ly, 
 void axpby(Grid *res, double a, Grid *x, double b, Grid *y, bool halo=false);
 void copy(Grid *res, double a, Grid *x, bool halo=false);
 double dotProduct(Grid *x,Grid *y, bool halo=false);
-bool isSymmetric(Grid *u, double tol=1e-10, bool halo=false);
+double fuseAxpbyDot(Grid *res, double a, Grid *x, double b, Grid *y, bool halo=false);
 
+bool isSymmetric(Grid *u, double tol=1e-10, bool halo=false);
+// void fusedLoop ()
 #endif // GRID_H

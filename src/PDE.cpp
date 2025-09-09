@@ -97,13 +97,6 @@ void PDE::refreshBoundary(Grid *u)
 //Applies stencil operation on to x
 //i.e., lhs = A*x
 void PDE::applyStencil(Grid* lhs, Grid* x) {
-    // #pragma omp parallel 
-    // {
-    //     #pragma omp single
-    //     {
-    //         int i = omp_get_thread_num();
-    //     }
-    // }
     START_TIMER(APPLY_STENCIL);
 
     #ifdef DEBUG
@@ -117,56 +110,79 @@ void PDE::applyStencil(Grid* lhs, Grid* x) {
     const double w_y = 1.0/(h_y*h_y);
     const double w_c = 2.0*w_x + 2.0*w_y;
     
-
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_START("APPLY_STENCIL");
-    #endif
     int i, j, nth, tid, istart, iend, jj;
-    #pragma omp parallel // private(i, j, istart, iend, jj) 
+    #pragma omp parallel private(i,j, nth, tid, istart, iend)
     {
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_START("APPLY_STENCIL");
+        #endif
         nth = omp_get_num_threads();
         tid = omp_get_thread_num();
-        istart = (xSize-2)/nth * tid + 1; 
-        iend   = (tid == nth - 1 ? xSize - 2 : istart + (xSize-2)/nth - 1); 
-        #pragma omp parallel for firstprivate(nth, tid, istart, iend) schedule(dynamic, 4)
+        istart = ( xSize - 2 ) / nth * tid + 1; 
+        iend   = (tid == nth - 1 ? xSize - 2 : istart + (xSize-2)/nth - 1);
         for ( j=1; j<ySize -1 + nth -1; ++j ) {
             jj = j - tid;
-            if (jj >= 1 && jj < ySize-1) {
-                for ( i=istart; i<=iend; ++i) {
+            if ( jj >= 1 && jj < ySize-1 ) {
+                #pragma omp simd
+                for (i=istart; i<=iend; ++i) {
                     (*lhs)(jj,i) = w_c*(*x)(jj,i) - w_y*((*x)(jj+1,i) + (*x)(jj-1,i)) - w_x*((*x)(jj,i+1) + (*x)(jj,i-1));
                 }
             }
-            // #pragma omp barrier
         }
+
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_STOP("APPLY_STENCIL");
+        #endif
     }
-
-    // for ( int j=1; j<ySize-1; ++j)
-    // {
-    //     for ( int i=1; i<xSize-1; ++i)
-    //     {
-    //         (*lhs)(j,i) = w_c*(*x)(j,i) - w_y*((*x)(j+1,i) + (*x)(j-1,i)) - w_x*((*x)(j,i+1) + (*x)(j,i-1));
-    //     }
-    // }
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_STOP("APPLY_STENCIL");
-    #endif
-
 
     STOP_TIMER(APPLY_STENCIL);
 }
+double PDE::fuseStencilDot(Grid* lhs, Grid* x, double alpha) {
+    START_TIMER(FUSE_STENCIL_DOT);
+    
+    #ifdef DEBUG
+    assert((lhs->numGrids_y(true)==grids_y) && (lhs->numGrids_x(true)==grids_x));
+    assert((x->numGrids_y(true)==grids_y) && (x->numGrids_x(true)==grids_x));
+    #endif
+    const int xSize = numGrids_x(true);
+    const int ySize = numGrids_y(true);
 
+    const double w_x = 1.0/(h_x*h_x);
+    const double w_y = 1.0/(h_y*h_y);
+    const double w_c = 2.0*w_x + 2.0*w_y;
+    double lambda = 0;
+
+    int i, j, nth, tid, istart, iend, jj;
+    #pragma omp parallel private(i,j, nth, tid, istart, iend) reduction(+:lambda)
+    {
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_START("FUSE_STENCIL_DOT");
+        #endif
+
+        nth = omp_get_num_threads();
+        tid = omp_get_thread_num();
+        istart = ( xSize - 2 ) / nth * tid + 1; 
+        iend   = (tid == nth - 1 ? xSize - 2 : istart + (xSize-2)/nth - 1); 
+        for ( j=1; j<ySize -1 + nth -1; ++j ) {
+            jj = j - tid;
+            if ( jj >= 1 && jj < ySize-1 ) {
+                #pragma omp simd
+                for (i=istart; i<=iend; ++i) {
+                    (*lhs)(jj,i) = w_c*(*x)(jj,i) - w_y*((*x)(jj+1,i) + (*x)(jj-1,i)) - w_x*((*x)(jj,i+1) + (*x)(jj,i-1));
+                    lambda += (*lhs)(jj,i)*(*x)(jj,i);
+                }
+            }
+        }
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_STOP("FUSE_STENCIL_DOT");
+        #endif
+    }
+    STOP_TIMER(FUSE_STENCIL_DOT);
+    return alpha/lambda;
+}
 //GS preconditioning; solving for x: A*x=rhs
-void PDE::GSPreCon(Grid* rhs, Grid *x)
-{
-    // #pragma omp parallel 
-    // {
-    //     #pragma omp single
-    //     {
-    //         int i = omp_get_thread_num();
-    //     }
-    // }
+void PDE::GSPreCon(Grid* rhs, Grid *x) {
     START_TIMER(GS_PRE_CON);
-
     #ifdef DEBUG
     assert((rhs->numGrids_y(true)==grids_y) && (rhs->numGrids_x(true)==grids_x));
     assert((x->numGrids_y(true)==grids_y) && (x->numGrids_x(true)==grids_x));
@@ -180,61 +196,46 @@ void PDE::GSPreCon(Grid* rhs, Grid *x)
     const double w_c = 1.0/static_cast<double>((2.0*w_x + 2.0*w_y));
 
     
-    int i, j, nth, tid, istart, iend, jj;
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_START("GS_PRE_CON");
-    #endif
-    
-    // forward substitution Wave front parallelism
-    // for ( int j=1; j<ySize-1; ++j) {
-    //     for ( int i=1; i<xSize-1; ++i) {
-    //         (*x)(j,i) = w_c*((*rhs)(j,i) + (w_y*(*x)(j-1,i) + w_x*(*x)(j,i-1)));
-    //     }
-    // }
-    #pragma omp parallel  private(i, j, nth, tid, istart, iend) 
+    int i, j, nth, tid, istart, iend, jj=0;
+
+    #pragma omp parallel private(i, j, jj, nth, tid, istart, iend)
     {
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_START("GS_PRE_CON");
+        #endif
+
         nth = omp_get_num_threads();
         tid = omp_get_thread_num();
-        istart = (xSize-2)/nth * tid +1; 
-        iend   = (tid == nth - 1 ? xSize - 2 : istart + (xSize-2)/nth-1);
-        // #pragma omp parallel for firstprivate (istart, iend, nth, tid)  private(i,j,jj) schedule(dynamic, 4)
-        for ( j=1; j<ySize -1 + nth -1; ++j ) {
+        istart = (xSize-2)/nth * tid + 1;
+        iend   = (tid == nth - 1 ? xSize - 2 : istart + (xSize-2)/ nth - 1);
+        
+        // forward substitution Wave front parallelism
+        for (j = 1; j < ySize - 1 + nth - 1; ++j) {
             jj = j - tid;
-            if (jj >= 1 && jj < ySize-1) {
-                for ( i=istart; i<=iend; ++i) {
-                    (*x)(jj,i) = w_c*((*rhs)(jj,i) + (w_y*(*x)(jj-1,i) + w_x*(*x)(jj,i-1)));
-                }
+            if (jj >= 1 && jj < ySize - 1) {
+                    for ( i=istart; i<=iend; ++i) {
+                        (*x)(jj,i) = w_c*((*rhs)(jj,i) + (w_y   *(*x)(jj-1,i) + w_x*(*x)(jj,i-1)));
+                    }
             }
             #pragma omp barrier
         }
-    }
-    // backward substitution Wave front parallelism
-    // for ( int j=ySize-2; j>0; --j) {
-    //     for ( int i=xSize-2; i>0; --i) {
-    //         (*x)(j,i) = (*x)(j,i) + w_c*(w_y*(*x)(j+1,i) + w_x*(*x)(j,i+1));
-    //     }
-    // }
-    #pragma omp parallel private(i,j,tid, nth, istart, iend, jj)
-    {
-        nth = omp_get_num_threads();
-        tid = omp_get_thread_num();
-        istart = (xSize-2)/nth * tid+1;
-        iend   = (tid == nth - 1 ? xSize - 2 : istart + (xSize-2)/nth-1);
-        // #pragma omp parallel for firstprivate(tid,nth, istart, iend)
-        for ( j=ySize-2 + nth-1; j>=0; --j ) {
+
+        #pragma omp barrier
+        // backward substitution Wave front parallelism
+        // #pragma omp for schedule(static)
+        for ( j=ySize-2 + nth - 1; j>0; --j) {
             jj = j - tid;
-            if (jj >= 1 && jj < ySize-1) {
-                for ( i=iend; i>=istart; --i) { 
+            if (jj >= 1 && jj < ySize - 1) {
+                for ( i=iend; i>=istart; --i) {
                     (*x)(jj,i) = (*x)(jj,i) + w_c*(w_y*(*x)(jj+1,i) + w_x*(*x)(jj,i+1));
                 }
             }
             #pragma omp barrier
         }
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_STOP("GS_PRE_CON");
+        #endif
     }
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_STOP("GS_PRE_CON");
-    #endif
-
 
     STOP_TIMER(GS_PRE_CON);
 }
