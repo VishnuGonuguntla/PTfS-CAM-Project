@@ -290,11 +290,11 @@ void axpby(Grid *lhs, double a, Grid *x, double b, Grid *y, bool halo) {
     int shift = halo?0:HALO;
     int yIndex, xIndex;
     int numThreads = 1;
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_START("AXPBY");
-    #endif
     #pragma omp parallel 
     {
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_START("AXPBY");
+        #endif
         numThreads = omp_get_num_threads();
         #pragma omp for schedule(static)
         for(yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex) {
@@ -303,10 +303,10 @@ void axpby(Grid *lhs, double a, Grid *x, double b, Grid *y, bool halo) {
                 (*lhs)(yIndex,xIndex) = (a*(*x)(yIndex,xIndex)) + (b*(*y)(yIndex,xIndex));
             }
         }
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_STOP("AXPBY");
+        #endif
     }
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_STOP("AXPBY");
-    #endif
 
     STOP_TIMER(AXPBY);
 }
@@ -342,14 +342,6 @@ void copy(Grid *lhs, double a, Grid *rhs, bool halo) {
 //Calculate dot product of x and y
 //i.e. ; res = x'*y
 double dotProduct(Grid *x, Grid *y, bool halo) {
-    // int check = 0;
-    // #pragma omp parallel 
-    // {
-    //     #pragma omp single
-    //     {
-    //         int check = omp_get_num_threads();
-    //     }
-    // }
     START_TIMER(DOT_PRODUCT);
     #ifdef DEBUG
     assert((y->numGrids_y(true)==x->numGrids_y(true)) && (y->numGrids_x(true)==x->numGrids_x(true)));
@@ -357,14 +349,13 @@ double dotProduct(Grid *x, Grid *y, bool halo) {
 
     int shift = halo?0:HALO;
     int numThreads = 1;
-
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_START("DOT_PRODUCT");
-    #endif
     int xIndex, yIndex;
     double dot_res = 0;
     #pragma omp parallel
     {
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_START("DOT_PRODUCT");
+        #endif
         numThreads = omp_get_num_threads();
         #pragma omp for reduction( + : dot_res) schedule(static) // default(none) shared(x,y,shift) private(xIndex,yIndex)
         for(yIndex=shift; yIndex<x->numGrids_y(true)-shift; ++yIndex) {
@@ -373,17 +364,46 @@ double dotProduct(Grid *x, Grid *y, bool halo) {
                 dot_res += (*x)(yIndex,xIndex)*(*y)(yIndex,xIndex);
             }
         }
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_STOP("DOT_PRODUCT");
+        #endif
     }
-
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_STOP("DOT_PRODUCT");
-    #endif
-
 
     STOP_TIMER(DOT_PRODUCT);
     return dot_res;
 }
-
+double fuseAxpbyDot (Grid *lhs, double a, Grid *x, double b, Grid *y, bool halo) {
+    
+    #ifdef DEBUG
+    assert((lhs->numGrids_y(true)==x->numGrids_y(true)) && (lhs->numGrids_x(true)==x->numGrids_x(true)));
+    assert((y->numGrids_y(true)==x->numGrids_y(true)) && (y->numGrids_x(true)==x->numGrids_x(true)));
+    #endif
+    START_TIMER(FUSE_AXPBY_DOT);
+    int shift = halo?0:HALO;
+    int yIndex, xIndex;
+    int numThreads = 1;
+    double dot_res = 0;
+    #pragma omp parallel 
+    {
+        #ifdef LIKWID_PERFMON
+        LIKWID_MARKER_START("FUSE_AXPBY_DOT");
+        #endif
+        numThreads = omp_get_num_threads();
+        #pragma omp for schedule(static) reduction(+:dot_res)
+        for(yIndex=shift; yIndex<lhs->numGrids_y(true)-shift; ++yIndex) {
+            #pragma omp simd // simdlen(8) aligned(lhs,x,y:64)
+            for(xIndex=shift; xIndex<lhs->numGrids_x(true)-shift; ++xIndex) {
+                (*lhs)(yIndex,xIndex) = (a*(*x)(yIndex,xIndex)) + (b*(*y)(yIndex,xIndex));
+                dot_res += (*lhs)(yIndex,xIndex)*(*lhs)(yIndex,xIndex);
+            }
+        }
+    #ifdef LIKWID_PERFMON
+    LIKWID_MARKER_STOP("FUSE_AXPBY_DOT");
+    #endif
+    }
+    STOP_TIMER(FUSE_AXPBY_DOT);
+    return dot_res;
+}
 
 bool isSymmetric(Grid *u, double tol, bool halo) {
     bool flag = true;

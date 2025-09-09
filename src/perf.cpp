@@ -32,13 +32,13 @@ int main(const int argc, char* const argv[]) {
         return 0;
     }
 
-    #ifdef LIKWID_PERFMON
-    LIKWID_MARKER_INIT;
-    #endif
-
     int ny = atoi(argv[1]);
     int nx = atoi(argv[2]);
     int numThreads = 1;
+    
+    #ifdef LIKWID_PERFMON
+    LIKWID_MARKER_INIT;
+    #endif
     #pragma omp parallel 
     {
         numThreads = omp_get_num_threads();
@@ -112,7 +112,6 @@ int main(const int argc, char* const argv[]) {
     GET_TIMER(totalTime, MAIN);
     printf("Total Time = %f sec \n", totalTime);
     PRINT_TIME_SUMMARY;
-
     #ifdef LIKWID_PERFMON
     LIKWID_MARKER_CLOSE;
     #endif

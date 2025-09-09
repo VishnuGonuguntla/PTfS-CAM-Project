@@ -28,13 +28,15 @@ int SolverClass::CG(int niter, double tol) {
     START_TIMER(CG);
 
     while( (iter<niter) && (alpha_0>tol*tol) && (IS_VALID(alpha_0)) ) {
-        pde->applyStencil(v,p);
-        lambda =  alpha_0/dotProduct(v,p);
+        // pde->applyStencil(v,p);
+        // lambda = alpha_0/dotProduct(v,p);
+        lambda = pde->fuseStencilDot(v, p, alpha_0);
         //Update x
         axpby(x, 1.0, x, lambda, p);
         //Update r
-        axpby(r, 1.0, r, -lambda, v);
-        alpha_1 = dotProduct(r,r);
+        // axpby(r, 1.0, r, -lambda, v);
+        // alpha_1 = dotProduct(r,r);
+        alpha_1 = fuseAxpbyDot(r, 1.0, r, -lambda, v);
         //Update p
         axpby(p, 1.0, r, alpha_1/alpha_0, p);
         alpha_0 = alpha_1;
@@ -68,8 +70,9 @@ int SolverClass::PCG(int niter, double tol) {
     double res_norm_sq = 0;
     //Calculate residual
     pde->applyStencil(r,x);
-    axpby(r,1,b,-1,r);
-    res_norm_sq = dotProduct(r,r);
+    // axpby(r,1,b,-1,r);
+    // res_norm_sq = dotProduct(r,r);
+    res_norm_sq = fuseAxpbyDot(r,1.0, b,-1.0, r);
     pde->GSPreCon(r,z);
 
     alpha_0 = dotProduct(r,z);
@@ -78,13 +81,15 @@ int SolverClass::PCG(int niter, double tol) {
     START_TIMER(PCG);
 
     while( (iter<niter) && (res_norm_sq>tol*tol) && (IS_VALID(res_norm_sq)) ) {
-        pde->applyStencil(v,p);
-        lambda =  alpha_0/dotProduct(v,p);
+        // pde->applyStencil(v,p);
+        // lambda =  alpha_0/dotProduct(v,p);
+        lambda = pde->fuseStencilDot(v, p, alpha_0);
         //Update x
         axpby(x, 1.0, x, lambda, p);
         //Update r
-        axpby(r, 1.0, r, -lambda, v);
-        res_norm_sq = dotProduct(r,r);
+        // axpby(r, 1.0, r, -lambda, v);
+        // res_norm_sq = dotProduct(r,r);
+        res_norm_sq = fuseAxpbyDot(r, 1.0, r, -lambda, v);
         //Update z
         pde->GSPreCon(r, z);
         alpha_1 = dotProduct(r,z);
